@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>maxVFX Flame Dynamics · v1.3.0</title>
+<!-- Single-file offline WebGL2 reactive 2D fire; does NOT perform EmberGen-class volumetric simulation. -->
+<style>
+:root{
+  --panel: rgba(250,246,240,.86);
+  --line: rgba(48,36,26,.14);
+  --text: #221c17;
+  --muted: #6f655b;
+  --accent: #d66c25;
+  --chip: rgba(48,36,26,.07);
+  --on: #221c17;
+  --on-text: #faf4ec;
+  --track: rgba(48,36,26,.18);
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --panel: rgba(22,18,15,.70);
+    --line: rgba(255,236,214,.11);
+    --text: #f1e7da;
+    --muted: #a09385;
+    --accent: #ffb066;
+    --chip: rgba(255,236,214,.06);
+    --on: #f1e7da;
+    --on-text: #17120e;
+    --track: rgba(255,236,214,.16);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --panel: rgba(22,18,15,.70);
+  --line: rgba(255,236,214,.11);
+  --text: #f1e7da;
+  --muted: #a09385;
+  --accent: #ffb066;
+  --chip: rgba(255,236,214,.06);
+  --on: #f1e7da;
+  --on-text: #17120e;
+  --track: rgba(255,236,214,.16);
+  color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none !important}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);background:#000}
+body{
+  margin:0;height:100%;overflow:hidden;background:#000;color:var(--text);
+  font-family:system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none;
+}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+
+#hint{
+  position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);
+  color:rgba(255,236,214,.78);font-size:15px;letter-spacing:.01em;pointer-events:none;
+  text-shadow:0 1px 12px rgba(0,0,0,.8);transition:opacity .8s ease;white-space:nowrap;
+}
+#hint.gone{opacity:0}
+
+#dock{
+  position:fixed;left:0;right:0;bottom:0;
+  padding:0 12px calc(12px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;
+}
+#dock > *{pointer-events:auto}
+.bar,#drawer{
+  width:min(660px,100%);background:var(--panel);border:1px solid var(--line);
+  -webkit-backdrop-filter:blur(18px) saturate(1.3);backdrop-filter:blur(18px) saturate(1.3);
+}
+.bar{display:flex;align-items:center;gap:6px;padding:6px;border-radius:18px}
+.seg{display:flex;flex:1 1 auto;gap:2px;background:var(--chip);border-radius:13px;padding:3px;min-width:0}
+button{
+  font:inherit;font-size:14px;font-weight:500;color:var(--muted);background:transparent;
+  border:0;border-radius:10px;padding:9px 10px;cursor:pointer;white-space:nowrap;
+  transition:background-color .15s ease,color .15s ease;
+}
+.seg button{flex:1 1 0}
+.seg button[aria-pressed="true"]{background:var(--on);color:var(--on-text)}
+.act{border:1px solid var(--line);color:var(--text);padding:9px 14px}
+.act.hot{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.act[aria-expanded="true"]{background:var(--on);color:var(--on-text);border-color:var(--on)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#drawer{
+  border-radius:18px;padding:14px 16px 12px;max-height:min(52dvh,460px);overflow-y:auto;
+}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:4px 26px}
+.row label{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;color:var(--text)}
+.row output{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0;--fill:50%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--fill),var(--track) var(--fill))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--text);margin-top:-7.5px;border:0}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--track)}
+input[type=range]::-moz-range-progress{height:3px;border-radius:2px;background:var(--accent)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--text);border:0}
+.foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.foot .seg{flex:0 1 auto}
+.foot .label{font-size:13px;color:var(--muted);margin-right:2px}
+#fps{margin-left:auto;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+#fatal{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:32px;
+  color:#f1e7da;font-size:16px;line-height:1.7;text-align:center;max-width:36em;margin:auto;
+}
+
+@media (max-width:440px){
+  .bar{flex-wrap:wrap}
+  .bar > .seg{flex-basis:100%}
+  .bar > .act{flex:1 1 0}
+}
+@media (prefers-reduced-motion:reduce){#hint{transition:none}}
+
+/* Shared mobile interface */
+#masthead{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:18px;right:18px;display:flex;justify-content:space-between;gap:12px;align-items:center;z-index:2;pointer-events:none;letter-spacing:.03em;color:#f6e0cc;text-shadow:0 1px 10px #000}
+#masthead .brand{font-size:12px;font-weight:600;letter-spacing:.18em}#masthead small{font-size:10px;opacity:.55}
+#masthead button{pointer-events:auto;background:rgba(20,18,17,.72);border:1px solid rgba(255,255,255,.16);color:#f7dcc0;font-size:12px;padding:7px 11px}
+#status{font-size:11px;color:rgba(255,218,180,.58);font-variant-numeric:tabular-nums}
+.sectionLabel{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:8px 2px 4px}
+#sceneMode{max-width:660px;width:100%;color:#cfb196;opacity:.82;font-size:11px;letter-spacing:.07em;text-align:center;text-shadow:0 1px 8px #000}
+#dock{z-index:3}
+@media(max-width:440px){#status{display:none}#masthead{top:calc(8px + env(safe-area-inset-top,0px))}#presets button{padding:8px 3px;font-size:11px;letter-spacing:-.04em;min-width:0}}
+
+/* v1.3 playful touch-first interface */
+#dock{gap:7px}#sceneMode{font-size:10px;color:#ffe1c0;letter-spacing:.08em}
+#playTools{background:rgba(26,19,23,.83)}.playBar .seg button{color:#e7cbbb}.playBar .seg button[aria-pressed="true"]{background:#f6aa65;color:#20100b}
+.paletteBar{padding:5px 6px;gap:6px;background:rgba(27,21,31,.88);overflow:hidden}
+#palette{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;align-items:center;scrollbar-width:none;touch-action:pan-x}
+#palette::-webkit-scrollbar{display:none}
+#palette button{width:37px;min-width:37px;height:37px;padding:2px;border:2px solid transparent;border-radius:12px;display:grid;place-content:center;background:transparent;color:#fff;position:relative}
+#palette button .dot{width:26px;height:26px;border-radius:50%;display:block;border:1px solid rgba(255,255,255,.45);box-shadow:inset 0 0 7px rgba(0,0,0,.16),0 1px 7px rgba(0,0,0,.4)}
+#palette button[aria-pressed="true"]{border-color:#fff1cc;background:rgba(255,255,255,.11)}
+#palette button .tag{font-size:9px;position:absolute;left:50%;transform:translateX(-50%);bottom:-2px;text-shadow:0 0 4px #000,0 0 4px #000}
+.colorInput{display:flex;align-items:center;justify-content:center;gap:1px;flex:0 0 40px;border:1px solid rgba(255,255,255,.27);border-radius:10px;color:#fff;font-size:15px;height:37px}
+.colorInput input{width:21px;height:24px;min-width:0;border:0;padding:0;background:none;cursor:pointer}
+.subtleGuide{font-size:12px;line-height:1.5;color:var(--muted);padding:0 0 8px}
+@media(max-width:440px){#palette button{width:35px;min-width:35px;height:37px}#palette button .dot{width:25px;height:25px}.playBar .seg button{font-size:12px;padding:9px 3px}.bottomBar{flex-wrap:nowrap}.bottomBar>.seg{flex-basis:auto}.bottomBar>.act{padding:9px 8px;flex:0 0 auto;font-size:12px}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="화염 시뮬레이션 캔버스. 문지르면 불이 붙습니다."></canvas>
+<div id="masthead"><div><div class="brand">MAXVFX · FLAME DYNAMICS</div><small>GPU FIRE PAINT / v1.3.0</small></div><div style="display:flex;align-items:center;gap:7px"><span id="status">GPU · WEBGL2</span><button id="zen" type="button">몰입 모드</button><button id="capture" type="button">화면 저장</button></div></div>
+<div id="hint">손가락으로 원하는 곳에 불꽃을 그리세요</div>
+<div id="fatal" hidden></div>
+
+<div id="dock">
+  <div id="drawer" hidden>
+    <div class="sectionLabel">연소 · 물리 · 렌더링</div>
+    <div class="grid" id="sliders"></div>
+    <div class="sectionLabel">조작 설정 · 손으로만 모드 추천</div>
+    <div class="subtleGuide">그리기: 꾹 누르거나 이동 · 바람: 밀어서 불꽃 이동 · 지우개: 쓱 지우기</div>
+    <div class="foot">
+      <span class="label">품질</span>
+      <div class="seg" id="quality" role="group" aria-label="품질">
+        <button data-q="low">낮음</button>
+        <button data-q="mid">보통</button>
+        <button data-q="high">높음</button>
+        <button data-q="ultra">울트라</button>
+      </div>
+      <button class="act" id="pause">일시정지</button>
+      <button class="act" id="clear">지우기</button>
+      <span id="fps"></span>
+    </div>
+  </div>
+  <div id="sceneMode">🔥 TOUCH FIRE PLAYGROUND · 손끝에서 태어나는 불꽃</div>
+  <div id="playTools" class="bar playBar" role="group" aria-label="손가락 도구">
+    <div class="seg" id="brushModes">
+      <button data-tool="fire" aria-pressed="true">🔥 그리기</button>
+      <button data-tool="wind" aria-pressed="false">〰 바람</button>
+      <button data-tool="erase" aria-pressed="false">◌ 지우개</button>
+    </div>
+    <button class="act hot" id="boom">✦ 폭발</button>
+  </div>
+  <div class="bar paletteBar"><div id="palette" role="group" aria-label="불꽃 컬러"></div><label class="colorInput" title="직접 색상 선택">＋ <input id="customColor" type="color" value="#7e65ff" aria-label="커스텀 불꽃 컬러"></label></div>
+  <div class="bar bottomBar">
+    <div class="seg" id="presets" role="group" aria-label="불꽃 모드">
+      <button data-p="touch" aria-pressed="true">손으로만</button>
+      <button data-p="campfire" aria-pressed="false">모닥불</button>
+      <button data-p="wall" aria-pressed="false">불의 벽</button>
+    </div>
+    <button class="act" id="clearQuick">초기화</button>
+    <button class="act" id="tune" aria-expanded="false" aria-controls="drawer">설정</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('c');
+const fatalEl = document.getElementById('fatal');
+function fatal(msg){
+  fatalEl.textContent = msg; fatalEl.hidden = false;
+  document.getElementById('dock').hidden = true;
+  document.getElementById('hint').hidden = true;
+}
+
+canvas.addEventListener('webglcontextlost',e=>{ e.preventDefault(); fatal('GPU 컨텍스트가 손실되었습니다. 페이지를 새로고침하면 시뮬레이션을 다시 시작할 수 있습니다.'); });
+const gl = canvas.getContext('webgl2', {
+  alpha:false, antialias:false, depth:false, stencil:false,
+  premultipliedAlpha:false, preserveDrawingBuffer:false, powerPreference:'high-performance'
+});
+if (!gl) { fatal('이 브라우저는 WebGL2를 지원하지 않아 시뮬레이션을 실행할 수 없습니다. 최신 Chrome이나 Safari에서 열어 주세요.'); return; }
+gl.getExtension('EXT_color_buffer_float');
+gl.getExtension('EXT_color_buffer_half_float');
+gl.getExtension('OES_texture_float_linear');
+
+function canRender(internal, type){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, 4, 4, 0, gl.RGBA, type, null);
+  const f = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(f); gl.deleteTexture(t);
+  return ok;
+}
+if (!canRender(gl.RGBA16F, gl.HALF_FLOAT)) {
+  fatal('이 기기의 GPU가 부동소수점 렌더링을 지원하지 않아 시뮬레이션을 실행할 수 없습니다.');
+  return;
+}
+const PART_FMT = [gl.RGBA16F, gl.HALF_FLOAT]; // Coordinates/lifetime need only half precision.
+
+/* ------------------------------------------------------------------ shaders */
+const H = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+`;
+const NOISE = `
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float vnoise(vec2 p){
+  vec2 i = floor(p); vec2 f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  float a = hash12(i), b = hash12(i+vec2(1.0,0.0)), c = hash12(i+vec2(0.0,1.0)), d = hash12(i+vec2(1.0,1.0));
+  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+}
+float fbm(vec2 p){ float s = 0.0, a = 0.5; for(int i=0;i<3;i++){ s += a*vnoise(p); p = p*2.02 + vec2(5.3,1.7); a *= 0.5; } return s; }
+`;
+
+const VS = H + `
+layout(location=0) in vec2 aPos;
+uniform vec2 texelSize;
+out vec2 vUv; out vec2 vL; out vec2 vR; out vec2 vT; out vec2 vB;
+void main(){
+  vUv = aPos*0.5 + 0.5;
+  vL = vUv - vec2(texelSize.x, 0.0); vR = vUv + vec2(texelSize.x, 0.0);
+  vT = vUv + vec2(0.0, texelSize.y); vB = vUv - vec2(0.0, texelSize.y);
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+const FS = {
+ advect: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uVelocity; uniform sampler2D uSource;
+uniform vec2 velTexel; uniform float dt; uniform vec4 dissipation;
+void main(){
+  // 2nd order midpoint integration: reduces bending and numerical smear.
+  vec2 v0 = texture(uVelocity, vUv).xy;
+  vec2 mid = clamp(vUv - 0.5 * dt * v0 * velTexel, vec2(0.0), vec2(1.0));
+  vec2 coord = clamp(vUv - dt * texture(uVelocity, mid).xy * velTexel, vec2(0.0), vec2(1.0));
+  o = texture(uSource, coord) / (1.0 + dissipation * abs(dt));
+}`,
+
+ maccormack: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uVelocity; uniform sampler2D uSource; uniform sampler2D uHat; uniform sampler2D uHat2;
+uniform vec2 velTexel; uniform vec2 srcTexel; uniform float dt; uniform vec4 dissipation;
+void main(){
+  vec2 v0 = texture(uVelocity,vUv).xy;
+  vec2 mid = clamp(vUv - 0.5 * dt * v0 * velTexel, vec2(0.0), vec2(1.0));
+  vec2 coord = clamp(vUv - dt * texture(uVelocity,mid).xy * velTexel, vec2(0.0), vec2(1.0));
+  // Local min/max limiter avoids overshooting of temperature, fuel and smoke.
+  vec2 texCenter = (floor(coord/srcTexel - 0.5) + 0.5) * srcTexel;
+  vec4 a = texture(uSource, clamp(texCenter,vec2(0.0),vec2(1.0)));
+  vec4 b = texture(uSource, clamp(texCenter + vec2(srcTexel.x,0.0),vec2(0.0),vec2(1.0)));
+  vec4 c = texture(uSource, clamp(texCenter + vec2(0.0,srcTexel.y),vec2(0.0),vec2(1.0)));
+  vec4 d = texture(uSource, clamp(texCenter + srcTexel,vec2(0.0),vec2(1.0)));
+  vec4 mn = min(min(a,b),min(c,d)), mx = max(max(a,b),max(c,d));
+  vec4 corrected = texture(uHat,vUv) + 0.5*(texture(uSource,vUv)-texture(uHat2,vUv));
+  o = clamp(corrected,mn,mx) / (1.0 + dissipation * abs(dt));
+}`,
+
+emitScalar: H + NOISE + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScalars; uniform vec4 uEmit; uniform float aspect; uniform float time;
+uniform float fuelAmt; uniform float tempAmt; uniform float sMin;
+void main(){
+  vec2 p = vec2(vUv.x*aspect, vUv.y);
+  vec2 d = (p - vec2(uEmit.x*aspect, uEmit.y)) / uEmit.zw;
+  float m = 1.0 - smoothstep(0.55, 1.0, length(d));
+  float n = fbm(p * vec2(26.0, 11.0) / sMin + vec2(time*0.5, -time*3.2));
+  m *= smoothstep(0.28, 0.62, n);
+  vec4 s = texture(uScalars, vUv);
+  // Approach source levels smoothly instead of overwriting every frame.
+  s.g += max(m*fuelAmt - s.g, 0.0) * 0.45;
+  s.r += max(m*tempAmt - s.r, 0.0) * 0.45;
+  o = s;
+}`,
+
+emitVelocity: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uVelocity; uniform vec4 uEmit; uniform float aspect; uniform float jet;
+void main(){
+  vec2 p = vec2(vUv.x*aspect, vUv.y);
+  vec2 d = (p - vec2(uEmit.x*aspect, uEmit.y)) / uEmit.zw;
+  float m = 1.0 - smoothstep(0.4, 1.0, length(d));
+  vec2 v = texture(uVelocity, vUv).xy;
+  v.y = mix(v.y, max(v.y, jet), m);
+  o = vec4(v, 0.0, 1.0);
+}`,
+
+combust: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScalars; uniform float dt; uniform float burnRate; uniform float ignition;
+uniform float heat; uniform float smokeYield;
+void main(){
+  vec4 s = texture(uScalars, vUv);
+  float T = max(s.r, 0.0), F = clamp(s.g, 0.0, 2.0), S = max(s.b, 0.0);
+  float ign = smoothstep(ignition, ignition + 0.2, T);
+  float burn = min(F, F * burnRate * dt * ign);
+  T += burn * heat; F -= burn; S += burn * smokeYield;
+  o = vec4(min(T, 4.0), F, min(S, 3.0), 0.0);
+}`,
+
+forces: H + NOISE + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uVelocity; uniform sampler2D uScalars;
+uniform float dt; uniform float buoyancy; uniform float weight; uniform float turbulence;
+uniform float time; uniform float aspect; uniform float noiseScale; uniform float wind; uniform float flowLimit;
+void main(){
+  vec2 v = texture(uVelocity, vUv).xy;
+  vec4 s = texture(uScalars, vUv);
+  float T = s.r;
+  v.y += (buoyancy * T - weight * s.b) * dt;
+  // Wind is coupled to the hot plume, not the entire scene.
+  v.x += wind * clamp(T * 0.65 + s.b * 0.18, 0.0, 1.0) * dt;
+  vec2 p = vec2(vUv.x*aspect, vUv.y) * noiseScale + vec2(time*0.35, -time*1.6);
+  const float e = 0.06;
+  float n1 = fbm(p + vec2(0.0, e)), n2 = fbm(p - vec2(0.0, e));
+  float n3 = fbm(p + vec2(e, 0.0)), n4 = fbm(p - vec2(e, 0.0));
+  vec2 curl = vec2(n1 - n2, -(n3 - n4)) / (2.0 * e);
+  // Turbulence is an acceleration, not an unlimited displacement.
+  vec2 dv = curl * turbulence * clamp(T, 0.0, 1.5) * dt;
+  v += clamp(dv, vec2(-0.32 * flowLimit), vec2(0.32 * flowLimit));
+  v = clamp(v, vec2(-flowLimit), vec2(flowLimit));
+  o = vec4(v, 0.0, 1.0);
+}`,
+
+curl: H + `
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB; out vec4 o;
+uniform sampler2D uVelocity;
+void main(){
+  float L = texture(uVelocity, vL).y, R = texture(uVelocity, vR).y;
+  float T = texture(uVelocity, vT).x, B = texture(uVelocity, vB).x;
+  o = vec4(0.5 * (R - L - T + B), 0.0, 0.0, 1.0);
+}`,
+
+vorticity: H + `
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB; out vec4 o;
+uniform sampler2D uVelocity; uniform sampler2D uCurl; uniform float curl; uniform float dt; uniform float vmax;
+void main(){
+  float L = texture(uCurl, vL).x, R = texture(uCurl, vR).x;
+  float T = texture(uCurl, vT).x, B = texture(uCurl, vB).x;
+  float C = texture(uCurl, vUv).x;
+  vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+  force /= length(force) + 0.0001;
+  force *= curl * C; force.y *= -1.0;
+  // Clip the confinement impulse BEFORE accumulating it. Prevents a single
+  // half-float curl spike from producing a downward-moving fireball.
+  vec2 dv = clamp(force * dt, vec2(-0.22*vmax), vec2(0.22*vmax));
+  vec2 v = texture(uVelocity, vUv).xy + dv;
+  o = vec4(clamp(v, vec2(-vmax), vec2(vmax)), 0.0, 1.0);
+}`,
+
+divergence: H + `
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB; out vec4 o;
+uniform sampler2D uVelocity;
+void main(){
+  vec2 C = texture(uVelocity, vUv).xy;
+  float L = texture(uVelocity, vL).x, R = texture(uVelocity, vR).x;
+  float T = texture(uVelocity, vT).y, B = texture(uVelocity, vB).y;
+  if (vL.x < 0.0) L = -C.x;
+  if (vR.x > 1.0) R = -C.x;
+  if (vB.y < 0.0) B = -C.y;
+  if (vT.y > 1.0) T = C.y;
+  o = vec4(0.5 * (R - L + T - B), 0.0, 0.0, 1.0);
+}`,
+
+scale: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform float value;
+void main(){ o = value * texture(uTex, vUv); }`,
+
+pressure: H + `
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB; out vec4 o;
+uniform sampler2D uPressure; uniform sampler2D uDivergence;
+void main(){
+  float L = texture(uPressure, vL).x, R = texture(uPressure, vR).x;
+  float T = texture(uPressure, vT).x, B = texture(uPressure, vB).x;
+  if (vT.y > 1.0) T = 0.0;
+  float div = texture(uDivergence, vUv).x;
+  o = vec4((L + R + B + T - div) * 0.25, 0.0, 0.0, 1.0);
+}`,
+
+gradient: H + `
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB; out vec4 o;
+uniform sampler2D uPressure; uniform sampler2D uVelocity;
+void main(){
+  float L = texture(uPressure, vL).x, R = texture(uPressure, vR).x;
+  float T = texture(uPressure, vT).x, B = texture(uPressure, vB).x;
+  if (vT.y > 1.0) T = 0.0;
+  // The divergence uses a 0.5 centered difference, so gradient needs 0.5 too.
+  // Old 1.0 scaling over-corrected pressure, generating vertical reversals.
+  vec2 v = texture(uVelocity, vUv).xy - 0.5 * vec2(R - L, T - B);
+  o = vec4(v, 0.0, 1.0);
+}`,
+
+stabilize: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uVelocity; uniform sampler2D uScalars;
+uniform float simSize; uniform float liftLock;
+void main(){
+  vec2 v = texture(uVelocity,vUv).xy;
+  vec4 s = texture(uScalars,vUv);
+  float hot = smoothstep(0.16,0.95,max(s.r,0.0));
+  float upMin = simSize * (0.16 + 0.56*liftLock);
+  // Fire is buoyant. Softly enforce upward transport for hot material while
+  // leaving cold smoke and horizontal wind free to circulate.
+  v.y = mix(v.y,max(v.y,upMin),hot);
+  // Any visibly hot flame cannot sink even if a pressure/touch impulse spikes.
+  if(s.r>0.45) v.y=max(v.y,0.12*simSize);
+  if(vUv.y < 0.014) v.y = max(0.0,v.y);
+  if(vUv.x < 0.006) v.x = max(0.0,v.x);
+  if(vUv.x > 0.994) v.x = min(0.0,v.x);
+  o=vec4(clamp(v,vec2(-2.8*simSize),vec2(2.8*simSize)),0.0,1.0);
+}`,
+
+constrainScalars: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScalars; uniform float sourceFloor;
+void main(){
+  vec4 s=texture(uScalars,vUv);
+  // For fixed sources, heat/fuel that reaches below the combustion base is
+  // extinguished rather than spawning detached down-falling tongues.
+  if(sourceFloor>=0.0){
+    float survival = smoothstep(sourceFloor-0.035,sourceFloor+0.010,vUv.y);
+    s.rgb *= survival;
+  }
+  o=vec4(max(s.rgb,vec3(0.0)),0.0);
+}`,
+
+splat: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTarget; uniform float aspect; uniform vec2 point; uniform vec4 value; uniform float radius;
+void main(){
+  vec2 p = vUv - point; p.x *= aspect;
+  float g = exp(-dot(p, p) / radius);
+  o = texture(uTarget, vUv) + value * g;
+}`,
+
+blast: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTarget; uniform float aspect; uniform vec2 point; uniform float radius; uniform float strength; uniform float lift;
+void main(){
+  vec2 p = vUv - point; p.x *= aspect;
+  float g = exp(-dot(p, p) / radius);
+  vec2 dir = p / (length(p) + 1e-4);
+  vec2 v = texture(uTarget, vUv).xy + (dir * strength + vec2(0.0, lift)) * g;
+  o = vec4(v, 0.0, 1.0);
+}`,
+
+ composite: H + NOISE + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScalars; uniform sampler2D uPigment;
+uniform vec2 scalarTexel;
+uniform float time, aspect, haze, smokeDens, propType, sMin, exposure, chemMix;
+
+uniform vec4 uEmit;
+float sdCapsule(vec2 p,vec2 a,vec2 b,float r){vec2 pa=p-a, ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-5),0.0,1.0);return length(pa-ba*h)-r;}
+vec3 emission(float T){
+  // Approximate temperature-driven radiance; values intentionally remain HDR.
+  float h = clamp(T * 0.45, 0.0, 1.0);
+  vec3 c = mix(vec3(0.50,0.018,0.002),vec3(1.45,0.18,0.008),smoothstep(0.03,0.36,h));
+  c = mix(c,vec3(2.4,0.72,0.075),smoothstep(0.30,0.72,h));
+  c = mix(c,vec3(3.7,2.12,0.72),smoothstep(0.72,1.0,h));
+  return c;
+}
+void main(){
+  vec2 uv = vUv;
+  // Thermal shimmer follows the transported heat gradient, without any
+  // synthetic screen-space noise texture.
+  float T0=texture(uScalars,uv).r;
+  vec2 shimmer=vec2(texture(uScalars,clamp(uv+vec2(scalarTexel.x,0),vec2(0),vec2(1))).r-texture(uScalars,clamp(uv-vec2(scalarTexel.x,0),vec2(0),vec2(1))).r,
+                    texture(uScalars,clamp(uv+vec2(0,scalarTexel.y),vec2(0),vec2(1))).r-texture(uScalars,clamp(uv-vec2(0,scalarTexel.y),vec2(0),vec2(1))).r);
+  uv=clamp(uv-0.002*haze*clamp(shimmer,vec2(-0.35),vec2(0.35))*smoothstep(0.10,1.0,T0),vec2(0.0),vec2(1.0));
+  vec4 s=texture(uScalars,uv);
+  float T=max(s.r,0.0), F=max(s.g,0.0), S=max(s.b,0.0);
+  vec2 p=vec2(uv.x*aspect,uv.y);
+  float ambient = 0.004;
+  vec3 col=vec3(ambient,ambient*0.65,ambient*0.45);
+
+  // Glow is deliberately subtle; a separate bloom pass handles optical flare.
+  float glowT = texture(uScalars,clamp(uv+vec2(0.0,0.035),vec2(0),vec2(1))).r +
+                0.55*texture(uScalars,clamp(uv-vec2(0.0,0.032),vec2(0),vec2(1))).r;
+  vec3 glow=emission(glowT*0.35)*smoothstep(0.18,1.1,glowT);
+  col += glow*0.013;
+
+  // Scene props: procedural crossed logs (no unused presets).
+  if(propType>0.5){
+    vec2 c=vec2(uEmit.x*aspect,uEmit.y);
+    float d;
+    if(propType<1.5){
+      float L=uEmit.z*1.1,h=0.028*sMin,r=0.022*sMin;
+      vec2 b=c-vec2(0.0,0.03*sMin);
+      d=min(sdCapsule(p,b+vec2(-L,-h),b+vec2(L,h),r),sdCapsule(p,b+vec2(-L,h),b+vec2(L,-h),r));
+    } else { d=1.0; }
+    float m=1.0-smoothstep(-0.002,0.002,d);
+    if(m>0.0){
+      float grain=vnoise(p*vec2(75.0,190.0)/sMin);
+      vec3 wood=vec3(0.035,0.020,0.012)*(0.62+grain*0.85);
+      float rim=smoothstep(-0.017*sMin,0.0,d);
+      float ember=smoothstep(.57,.85,vnoise(p*115.0/sMin+vec2(time*.04,0.0)))*min(1.0,glowT*.5);
+      col=mix(col,wood+glow*(0.09+rim*.16)+vec3(1.1,.17,.012)*ember*.65,m);
+    }
+  }
+
+  // Smoke uses transported smoke density with multiscale texture, not fake orange fog.
+  float smoke=1.0-exp(-S*smokeDens*0.92);
+  vec3 smokeColor=vec3(0.026,0.027,0.033)+glow*.085;
+  col=mix(col,smokeColor,clamp(smoke,0.0,0.86));
+
+  // Strictly field-driven flame shading: no added grain, checker, fbm folds,
+  // or high-frequency stripes. Fine contours come from the transported heat.
+  vec2 dx=vec2(scalarTexel.x,0.0),dy=vec2(0.0,scalarTexel.y);
+  float grad=length(vec2(texture(uScalars,clamp(uv+dx,vec2(0),vec2(1))).r-texture(uScalars,clamp(uv-dx,vec2(0),vec2(1))).r,
+                         texture(uScalars,clamp(uv+dy,vec2(0),vec2(1))).r-texture(uScalars,clamp(uv-dy,vec2(0),vec2(1))).r));
+  float threshold=0.13;
+  float edgeWidth=0.10;
+  float flame=smoothstep(threshold,threshold+edgeWidth,T);
+  float burn=clamp(T*0.72+F*0.16,0.0,1.65);
+  float contrast=0.88+0.28*smoothstep(0.03,0.28,grad);
+  vec3 light=emission(T)*flame*contrast*min(burn,1.40);
+  // Pigment is transported by the same velocity as temperature and smoke.
+  vec4 paint=texture(uPigment,uv);
+  float tint=clamp(paint.a*chemMix,0.0,1.0);
+  float energy=dot(emission(T),vec3(.2126,.7152,.0722));
+  vec3 chroma=paint.rgb*(0.65+1.24*energy)*flame*contrast*min(burn,1.40);
+  light=mix(light,chroma,tint);
+  float rim=clamp(grad*1.1,0.0,0.3)*flame*max(T-0.13,0.0);
+  vec3 edge=mix(vec3(1.28,0.38,0.06),paint.rgb*1.6,tint);
+  col+=(light+edge*rim)*exposure*exp(-smoke*0.25);
+  o=vec4(max(col,vec3(0.0)),1.0);
+}`,
+
+ pigmentPaint: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uPigment; uniform vec2 point; uniform vec3 brushColor;
+uniform float aspect, radius, natural, strength;
+void main(){
+  vec2 p=vUv-point; p.x*=aspect;
+  float mask=clamp(exp(-dot(p,p)/max(radius,1e-7))*strength,0.0,0.88);
+  vec4 prev=texture(uPigment,vUv);
+  o=vec4(mix(prev.rgb,brushColor,mask),mix(prev.a,1.0-natural,mask));
+}`,
+ eraseField: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTarget; uniform vec2 point; uniform float aspect,radius,strength;
+void main(){
+  vec2 p=vUv-point;p.x*=aspect;
+  float mask=clamp(exp(-dot(p,p)/max(radius,1e-7))*strength,0.0,0.96);
+  o=max(texture(uTarget,vUv)*(1.0-mask),vec4(0.0));
+}`,
+ partUpdate: H + NOISE + `
+out vec4 o;
+uniform sampler2D uState; uniform sampler2D uVelocity; uniform sampler2D uScalars; uniform sampler2D uCurl;
+uniform vec2 velTexel; uniform float dt; uniform float spawnRate; uniform vec2 rnd;
+uniform float time; uniform float lifetime; uniform float turbulence;
+void main(){
+  ivec2 id = ivec2(gl_FragCoord.xy);
+  vec4 st = texelFetch(uState, id, 0);
+  vec2 pos = st.xy; float life = st.z; float seed = st.w;
+  vec2 fc = gl_FragCoord.xy;
+  if (life <= 0.0) {
+    vec2 cand = vec2(hash12(fc*1.7 + rnd*113.0), hash12(fc.yx*2.3 + rnd.yx*71.0));
+    vec4 s = texture(uScalars, cand);
+    float chance = hash12(fc*0.37 + rnd*29.0);
+    // The probability is weighted by actual hot pixels. A broader / hotter
+    // flame occupies more random candidates and therefore spawns more embers.
+    float heat=smoothstep(0.35,1.85,s.r);
+    float fuel=clamp(s.g*0.35,0.0,0.55);
+    float localRate=heat*(0.40+1.35*heat+fuel);
+    if (chance < min(spawnRate * dt * localRate,0.45)) {
+      pos = cand; life = 1.0; seed = hash12(fc*3.1 + rnd*7.7);
+    } else { pos = vec2(-1.0); life = 0.0; }
+  } else {
+    // Advect with the actual flame velocity AND its measured vorticity.
+    // Coherent short-lived eddies prevent the old frame-random jitter look.
+    vec2 fluid = texture(uVelocity, pos).xy;
+    float omega = clamp(texture(uCurl, pos).r / 22.0, -1.0, 1.0);
+    float hot = clamp(texture(uScalars, pos).r * 0.5, 0.0, 1.0);
+    float phase = time * (14.0 + 6.0 * seed) + seed * 27.1;
+    vec2 whorl = vec2(sin(phase + pos.y * 49.0),
+                      cos(phase * 0.79 + pos.x * 43.0 + seed * 11.0));
+    float eddy = turbulence * (17.0 + 21.0 * hot) * (0.8 + 0.35 * (1.0 - life));
+    vec2 motion = vec2(fluid.x * 1.28 + eddy * whorl.x + omega * 24.0 * turbulence,
+                       fluid.y * 1.18 + 25.0 + eddy * 0.48 * whorl.y);
+    // Keep glowing embers from sinking with rare negative pressure spikes.
+    motion.y = max(motion.y, 7.0);
+    pos += clamp(motion, vec2(-550.0, 7.0), vec2(550.0)) * velTexel * dt;
+    // Previous lifetime: ~1.18-3.13 s. New default: ~0.32-0.65 s.
+    life -= dt * mix(1.55, 3.15, seed) / max(lifetime, 0.25);
+    if (pos.y > 1.02 || pos.x < -0.02 || pos.x > 1.02 || pos.y < -0.02) life = 0.0;
+  }
+  o = vec4(pos, life, seed);
+}`,
+
+partDraw: H + `
+in float vLife; in float vSeed; in vec3 vSparkTint; out vec4 o;
+uniform float time;
+void main(){
+  vec2 d = gl_PointCoord - 0.5;
+  float a = smoothstep(0.5, 0.0, length(d));
+  float t = vLife;
+  float flick = 0.75 + 0.25 * sin(time * (14.0 + 20.0*vSeed) + vSeed*40.0);
+  vec3 c = mix(vSparkTint*2.2, mix(vSparkTint,vec3(1.0),0.50)*3.5, t*t) * (0.6 + 0.8*vSeed) * flick;
+  o = vec4(c * a * smoothstep(0.0, 0.25, t), 1.0);
+}`,
+
+prefilter: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uSrc; uniform vec2 srcTexel; uniform float threshold; uniform float knee;
+void main(){
+  vec3 c = 0.25 * (texture(uSrc, vUv + srcTexel*vec2(-0.5,-0.5)).rgb + texture(uSrc, vUv + srcTexel*vec2(0.5,-0.5)).rgb
+                 + texture(uSrc, vUv + srcTexel*vec2(-0.5,0.5)).rgb + texture(uSrc, vUv + srcTexel*vec2(0.5,0.5)).rgb);
+  float br = max(c.r, max(c.g, c.b));
+  float rq = clamp(br - threshold + knee, 0.0, 2.0*knee);
+  rq = rq * rq / (4.0*knee + 1e-4);
+  c *= max(rq, br - threshold) / max(br, 1e-4);
+  o = vec4(c, 1.0);
+}`,
+
+blur: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uSrc; uniform vec2 srcTexel;
+void main(){
+  vec3 c = texture(uSrc, vUv + srcTexel*vec2(-1.0,-1.0)).rgb + texture(uSrc, vUv + srcTexel*vec2(1.0,-1.0)).rgb
+         + texture(uSrc, vUv + srcTexel*vec2(-1.0,1.0)).rgb + texture(uSrc, vUv + srcTexel*vec2(1.0,1.0)).rgb;
+  o = vec4(c * 0.25, 1.0);
+}`,
+
+final: H + `
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScene; uniform sampler2D uBloom; uniform float bloom; uniform float time;
+vec3 aces(vec3 x){ const float a=2.51, b=0.03, c=2.43, d=0.59, e=0.14; return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0); }
+void main(){
+  vec3 c = texture(uScene, vUv).rgb + texture(uBloom, vUv).rgb * bloom;
+  c = aces(c * 1.05);
+  float d = length(vUv - 0.5) * 1.25;
+  c *= mix(0.74, 1.0, smoothstep(0.9, 0.2, d));
+  c = pow(c, vec3(1.0/2.2));
+  o = vec4(c, 1.0);
+}`
+};
+
+const PART_VS = H + `
+uniform sampler2D uState; uniform sampler2D uPigment; uniform int N; uniform float pointScale;
+out float vLife; out float vSeed; out vec3 vSparkTint;
+void main(){
+  ivec2 id = ivec2(gl_VertexID % N, gl_VertexID / N);
+  vec4 st = texelFetch(uState, id, 0);
+  vLife = st.z; vSeed = st.w;
+  vec4 pig=texture(uPigment,clamp(st.xy,vec2(0.0),vec2(1.0)));
+  vSparkTint=mix(vec3(1.0,0.55,0.16),pig.rgb,clamp(pig.a,0.0,1.0));
+  if (st.z <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 1.0; return; }
+  gl_Position = vec4(st.xy * 2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = pointScale * (0.6 + 1.5*st.w*st.w) * (0.45 + 0.55*st.z);
+}`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); console.error(log); throw new Error(log); }
+  return s;
+}
+function program(vs, fs){
+  const p = gl.createProgram();
+  const sv=compile(gl.VERTEX_SHADER,vs), sf=compile(gl.FRAGMENT_SHADER,fs);
+  gl.attachShader(p,sv);gl.attachShader(p,sf);
+  gl.linkProgram(p);
+  gl.deleteShader(sv);gl.deleteShader(sf);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {const msg=gl.getProgramInfoLog(p);gl.deleteProgram(p);throw new Error(msg);}
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+let P;
+try {
+  P = {};
+  for (const k in FS) P[k] = program(k === 'partDraw' ? PART_VS : VS, FS[k]);
+} catch (err) {
+  fatal('셰이더를 준비하지 못했습니다. 다른 브라우저에서 열어 보세요. (' + String(err.message).slice(0, 120) + ')');
+  return;
+}
+
+let cur = null;
+function use(pr){ gl.useProgram(pr.p); cur = pr.u; }
+const f1 = (n, a) => { if (cur[n]) gl.uniform1f(cur[n], a); };
+const f2 = (n, a, b) => { if (cur[n]) gl.uniform2f(cur[n], a, b); };
+const f4 = (n, a, b, c, d) => { if (cur[n]) gl.uniform4f(cur[n], a, b, c, d); };
+const i1 = (n, a) => { if (cur[n]) gl.uniform1i(cur[n], a); };
+
+/* ------------------------------------------------------------------ geometry */
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const emptyVAO = gl.createVertexArray();
+
+function blit(target){
+  if (target) { gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo); gl.viewport(0, 0, target.w, target.h); }
+  else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); }
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ------------------------------------------------------------------ framebuffers */
+function fbo(w, h, internal, type, filter){
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, gl.RGBA, type, null);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('GPU framebuffer unsupported: '+w+'x'+h);
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  return {
+    tex, fbo: fb, w, h, tx: 1 / w, ty: 1 / h,
+    attach(unit){ gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); return unit; },
+    destroy(){ gl.deleteTexture(tex); gl.deleteFramebuffer(fb); }
+  };
+}
+function dfbo(w, h, internal, type, filter){
+  let a = fbo(w, h, internal, type, filter), b = fbo(w, h, internal, type, filter);
+  return {
+    w, h, tx: 1 / w, ty: 1 / h,
+    get read(){ return a; }, get write(){ return b; },
+    swap(){ const t = a; a = b; b = t; },
+    destroy(){ a.destroy(); b.destroy(); }
+  };
+}
+
+const QUALITY = {
+  low:  { sim: 112, dye: 320, iters: 14, mac: false, dpr: 1.0, parts: 32, maxPixels: 520000 },
+  mid:  { sim: 156, dye: 480, iters: 20, mac: true, dpr: 1.35, parts: 48, maxPixels: 900000 },
+  high: { sim: 216, dye: 680, iters: 30, mac: true, dpr: 1.75, parts: 64, maxPixels: 1450000 },
+  // Optional high-load quality for capable GPUs; phones remain on mid by default.
+  ultra:{ sim: 288, dye: 960, iters: 40, mac: true, dpr: 2.0, parts: 80, maxPixels: 2200000 }
+};
+
+let quality = matchMedia('(pointer:coarse)').matches ? 'mid' : 'high';
+
+let velocity, scalars, pigment, divergenceF, curlF, pressure, hatA, hatB, scene, bloomChain = [], parts;
+let simMin = 1;
+
+function res(base){
+  const a = canvas.width / canvas.height;
+  return a < 1 ? [base, Math.round(base / a)] : [Math.round(base * a), base];
+}
+function initTargets(){
+  [velocity, scalars, pigment, divergenceF, curlF, pressure, hatA, hatB, scene, parts].forEach(t => t && t.destroy());
+  bloomChain.forEach(t => t.destroy()); bloomChain = [];
+  const q = QUALITY[quality];
+  const HF = gl.HALF_FLOAT, L = gl.LINEAR, N = gl.NEAREST, F = gl.RGBA16F;
+  const [sw, sh] = res(q.sim), [dw, dh] = res(q.dye);
+  simMin = Math.min(sw, sh);
+  velocity = dfbo(sw, sh, F, HF, L);
+  scalars = dfbo(dw, dh, F, HF, L);
+  pigment = dfbo(dw, dh, F, HF, L);
+  divergenceF = fbo(sw, sh, F, HF, N);
+  curlF = fbo(sw, sh, F, HF, N);
+  pressure = dfbo(sw, sh, F, HF, N);
+  hatA = fbo(dw, dh, F, HF, L);
+  hatB = fbo(dw, dh, F, HF, L);
+  scene = fbo(canvas.width, canvas.height, F, HF, L);
+  let bw = canvas.width >> 1, bh = canvas.height >> 1;
+  for (let i = 0; i < 6 && bw > 2 && bh > 2; i++) { bloomChain.push(fbo(bw, bh, F, HF, L)); bw >>= 1; bh >>= 1; }
+  parts = dfbo(q.parts, q.parts, PART_FMT[0], PART_FMT[1], N);
+}
+
+function resize(){
+  const q = QUALITY[quality];
+  const maxScale = Math.sqrt(q.maxPixels / Math.max(1,canvas.clientWidth*canvas.clientHeight));
+  const dpr = Math.max(0.75,Math.min(window.devicePixelRatio || 1, q.dpr, maxScale));
+  const w = Math.max(2, Math.round(canvas.clientWidth * dpr));
+  const h = Math.max(2, Math.round(canvas.clientHeight * dpr));
+  if (w !== canvas.width || h !== canvas.height || !velocity) {
+    canvas.width = w; canvas.height = h; initTargets();
+    if (typeof measureDock === 'function') measureDock();
+  }
+}
+
+/* ------------------------------------------------------------------ parameters */
+const PRESETS = {
+  campfire: { emitter: { x: .5, y: .11, rx: .26, ry: .055 }, prop: 1, jet: 0,
+    height: .55, vort: 24, turb: 1.4, buoy: 2.2, smoke: .4, sparks: .6, bloom: .9, haze: .5, fuel: 1.3, temp: 1.0, noise: 4, wind: 0, exposure: 1.0, liftLock: .85 },
+  wall:     { emitter: { x: .5, y: .03, full: true, ry: .05 }, prop: 0, jet: 0,
+    height: .7, vort: 30, turb: 1.8, buoy: 2.4, smoke: .55, sparks: .8, bloom: .9, haze: .6, fuel: 1.2, temp: 1.0, noise: 3, wind: 0, exposure: 1.0, liftLock: .85 },
+  touch:    { emitter: null, prop: 0, jet: 0,
+    height: .6, vort: 26, turb: 1.4, buoy: 2.2, smoke: .45, sparks: .7, bloom: 1.0, haze: .5, fuel: 1.2, temp: 1.0, noise: 4, wind: 0, exposure: 1.0, liftLock: .85 }
+};
+const SLIDERS = [
+  { k: 'chemistry', label: '컬러 진하기', min: 0, max: 1, step: .01, fmt: v => Math.round(v*100)+'%' },
+  { k: 'wind', label: '바람 (좌 / 우)', min: -3, max: 3, step: .05, fmt: v => (v>0?'+':'')+v.toFixed(2) },
+  { k: 'brush', label:'손가락 붓 크기',min:.5,max:2.5,step:.05,fmt:v=>v.toFixed(2)+'×' },
+  { k: 'emberGain',label:'Ember 크기 반응',min:0,max:2.5,step:.05,fmt:v=>v.toFixed(2)+'×' },
+  { k: 'emberLife',label:'Ember 수명',min:.5,max:1.8,step:.05,fmt:v=>v.toFixed(2)+'×' },
+  { k: 'emberTurb',label:'Ember 난류 영향',min:0,max:3,step:.05,fmt:v=>v.toFixed(2)+'×' },
+  { k: 'liftLock', label: '불꽃 상승 안정성', min: 0, max: 1, step: .05, fmt: v => Math.round(v*100)+'%' },
+  { k: 'exposure', label: '화염 노출', min: .3, max: 1.8, step: .05, fmt: v => v.toFixed(2) },
+  { k: 'height', label: '불꽃 높이', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  { k: 'vort',   label: '소용돌이', min: 0, max: 60, step: 1, fmt: v => v.toFixed(0) },
+  { k: 'turb',   label: '일렁임', min: 0, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  { k: 'buoy',   label: '상승력', min: .5, max: 5, step: .05, fmt: v => v.toFixed(2) },
+  { k: 'smoke',  label: '연기', min: 0, max: 1.5, step: .01, fmt: v => v.toFixed(2) },
+  { k: 'sparks', label: '불티', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  { k: 'bloom',  label: '빛 번짐', min: 0, max: 2, step: .01, fmt: v => v.toFixed(2) },
+  { k: 'haze',   label: '열 아지랑이', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' }
+];
+let presetName = 'touch';
+const prm = Object.assign({}, PRESETS.touch);
+// Palette colors are digital VFX colors, not experimentally exact flame spectra.
+const PALETTE={
+  natural:{name:'기본',rgb:[1,0.56,0.17],css:'#ff982c'},
+  gold:{name:'금빛',rgb:[1.0,.73,.035],css:'#ffc83c'},
+  aqua:{name:'청록',rgb:[.04,.92,.80],css:'#16edcb'},
+  blue:{name:'청색',rgb:[.12,.36,1.0],css:'#3869ff'},
+  violet:{name:'보라',rgb:[.65,.29,1.0],css:'#9655ff'},
+  pink:{name:'분홍',rgb:[1.0,.11,.57],css:'#ff479c'},
+  red:{name:'홍염',rgb:[1,.025,.09],css:'#ff304b'},
+  lime:{name:'초록',rgb:[.35,1.0,.10],css:'#72fb31'},
+  white:{name:'백염',rgb:[.92,.90,.95],css:'#edecff'},
+  rainbow:{name:'무지개',rgb:[1,.1,.4],css:'conic-gradient(red,#ff0,lime,cyan,blue,magenta,red)'},
+  custom:{name:'직접',rgb:[.49,.39,1],css:'#7e65ff'}
+};
+let brushColor='natural', brushMode='fire';
+let lastTouch=[0.5,0.45], blastQueue=[];
+prm.chemistry=1.0;prm.brush=1.0;prm.emberGain=1.0;prm.emberLife=1.0;prm.emberTurb=1.65;
+
+
+let dockFrac = 0;
+const barEl = document.querySelector('.bar');
+function measureDock(){
+  const h = canvas.clientHeight || window.innerHeight;
+  dockFrac = Math.max(0, Math.min(0.3, (h - barEl.getBoundingClientRect().top) / h));
+}
+function emitVec(){
+  const e = PRESETS[presetName].emitter;
+  if (!e) return null;
+  const a = canvas.width / canvas.height, s = Math.min(1, a);
+  return [e.x, e.y + dockFrac * (e.full ? 0.35 : 0.85), e.full ? a * 0.62 : e.rx * s, e.ry * s];
+}
+
+/* ------------------------------------------------------------------ input */
+const pointers=new Map(), endedPointers=[];
+function toUV(e){const r=canvas.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,1-(e.clientY-r.top)/r.height))];}
+const hint=document.getElementById('hint');
+let hintGone=false;
+function hideHint(){if(!hintGone){hintGone=true;hint.classList.add('gone');}}
+setTimeout(hideHint,6000);
+canvas.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch') e.preventDefault();
+  try{canvas.setPointerCapture(e.pointerId);}catch(_){}
+  const [x,y]=toUV(e);
+  pointers.set(e.pointerId,{x,y,px:x,py:y,tool:brushMode,color:brushColor,segments:[]});
+  lastTouch=[x,y]; hideHint();
+});
+canvas.addEventListener('pointermove',e=>{
+  const p=pointers.get(e.pointerId);if(!p)return;
+  const [x,y]=toUV(e);p.x=x;p.y=y;lastTouch=[x,y];
+  if(p.segments.length<24)p.segments.push([x,y]);else p.segments[p.segments.length-1]=[x,y];
+});
+const endPtr=e=>{const p=pointers.get(e.pointerId);if(p){endedPointers.push(p);pointers.delete(e.pointerId);}};
+canvas.addEventListener('pointerup',endPtr);canvas.addEventListener('pointercancel',endPtr);
+canvas.addEventListener('lostpointercapture',endPtr);
+function hsvRGB(h){
+  h=((h%1)+1)%1;const f=n=>{const k=(n+h*6)%6;return 1-Math.max(0,Math.min(1,Math.min(k,4-k,1)));};
+  return [f(5),f(3),f(1)];
+}
+function stampColor(p,x,y){
+  if(p.color==='rainbow')return hsvRGB(time*.10 + x*.52 + y*.23);
+  return (PALETTE[p.color]||PALETTE.natural).rgb;
+}
+
+
+/* ------------------------------------------------------------------ simulation */
+function splat(target, x, y, v, radius){
+  use(P.splat);
+  i1('uTarget', target.read.attach(0));
+  f1('aspect', canvas.width / canvas.height);
+  f2('point', x, y);
+  f4('value', v[0], v[1], v[2], v[3]);
+  f1('radius', radius);
+  blit(target.write); target.swap();
+}
+
+function stampPigment(x,y,radius,rgb,natural,strength){
+  use(P.pigmentPaint);
+  i1('uPigment',pigment.read.attach(0));f2('point',x,y);
+  f1('aspect',canvas.width/canvas.height);f1('radius',radius);
+  if(cur.brushColor)gl.uniform3f(cur.brushColor,...rgb);
+  f1('natural',natural?1:0);f1('strength',strength);
+  blit(pigment.write);pigment.swap();
+}
+function eraseAt(target,x,y,radius){
+  use(P.eraseField);i1('uTarget',target.read.attach(0));
+  f2('point',x,y);f1('aspect',canvas.width/canvas.height);
+  f1('radius',radius);f1('strength',.85);
+  blit(target.write);target.swap();
+}
+function applyPointers(dt){
+  const a=canvas.width/canvas.height,s=Math.min(1,a);
+  const r=.035*s*prm.brush,rad=r*r;
+  const strokes=[...pointers.values(),...endedPointers.splice(0)];
+  for(const p of strokes){
+    // Include the initial down point, so even a very brief tap can ignite.
+    const targets=p.segments.length?p.segments:[[p.x,p.y]];
+    for(const [tx,ty] of targets){
+    const dx=tx-p.px,dy=ty-p.py;
+    const dist=Math.hypot(dx*a,dy);
+    const n=Math.min(10,Math.max(1,Math.ceil(dist/(r*.65))));
+    const vx=Math.max(-5,Math.min(5,dx*velocity.w/dt*.42/simMin))*simMin;
+    const vy=Math.max(-5,Math.min(5,dy*velocity.h/dt*.42/simMin))*simMin;
+    for(let i=1;i<=n;i++){
+      const t=i/n,x=p.px+dx*t,y=p.py+dy*t;
+      if(p.tool==='erase'){
+        eraseAt(scalars,x,y,rad*1.5);eraseAt(pigment,x,y,rad*1.5);
+      }else if(p.tool==='wind'){
+        if(dist>1e-6)splat(velocity,x,y,[vx/n*1.65,vy/n*1.65,0,0],rad*1.8);
+      }else{
+        const force=1.1+Math.min(dist/.09,1.4);
+        splat(scalars,x,y,[prm.temp*15*dt*force/n,prm.fuel*12*dt*force/n,0,0],rad);
+        stampPigment(x,y,rad*1.3,stampColor(p,x,y),p.color==='natural',.42);
+        if(dist>1e-6)splat(velocity,x,y,[vx/n,vy/n+Math.min(simMin*.07,16)/n,0,0],rad*1.7);
+      }
+    }
+    p.px=tx;p.py=ty;
+    }
+    p.segments.length=0;
+  }
+  // Fireball now detonates at the most recent touch location, with its color.
+  while(blastQueue.length){
+    const {x,y,color,isNatural}=blastQueue.shift(),br=(.07*s)**2;
+    splat(scalars,x,y,[2.65,2.1,.10,0],br);
+    stampPigment(x,y,br*1.1,color,isNatural,.95);
+    use(P.blast);i1('uTarget',velocity.read.attach(0));
+    f1('aspect',a);f2('point',x,y);f1('radius',br*2.6);
+    f1('strength',3.8*simMin);f1('lift',2.0*simMin);
+    blit(velocity.write);velocity.swap();
+  }
+}
+
+let time = 0;
+function step(dt){
+  const q = QUALITY[quality];
+  const a = canvas.width / canvas.height, s = Math.min(1, a);
+  const em = emitVec();
+  gl.disable(gl.BLEND);
+
+  if (em) {
+    use(P.emitScalar);
+    i1('uScalars', scalars.read.attach(0));
+    f4('uEmit', em[0], em[1], em[2], em[3]);
+    f1('aspect', a); f1('time', time); f1('sMin', s);
+    f1('fuelAmt', prm.fuel); f1('tempAmt', prm.temp);
+    blit(scalars.write); scalars.swap();
+    if (prm.jet > 0) {
+      use(P.emitVelocity);
+      i1('uVelocity', velocity.read.attach(0));
+      f4('uEmit', em[0], em[1], em[2], em[3]);
+      f1('aspect', a); f1('jet', prm.jet * simMin);
+      blit(velocity.write); velocity.swap();
+    }
+  }
+  applyPointers(dt);
+
+  use(P.combust);
+  i1('uScalars', scalars.read.attach(0));
+  f1('dt', dt); f1('burnRate', 6.0); f1('ignition', 0.25); f1('heat', 0.9); f1('smokeYield', prm.smoke);
+  blit(scalars.write); scalars.swap();
+
+  use(P.forces);
+  i1('uVelocity', velocity.read.attach(0)); i1('uScalars', scalars.read.attach(1));
+  f1('dt', dt); f1('buoyancy', prm.buoy * simMin); f1('weight', 0.25 * simMin);
+  f1('turbulence', prm.turb * simMin); f1('time', time); f1('aspect', a); f1('noiseScale', prm.noise / s); f1('wind', prm.wind * simMin); f1('flowLimit', simMin * 2.8);
+  blit(velocity.write); velocity.swap();
+
+  use(P.curl);
+  f2('texelSize', velocity.tx, velocity.ty);
+  i1('uVelocity', velocity.read.attach(0));
+  blit(curlF);
+
+  use(P.vorticity);
+  f2('texelSize', velocity.tx, velocity.ty);
+  i1('uVelocity', velocity.read.attach(0)); i1('uCurl', curlF.attach(1));
+  f1('curl', prm.vort); f1('dt', dt); f1('vmax', simMin * 2.8);
+  blit(velocity.write); velocity.swap();
+
+  use(P.divergence);
+  f2('texelSize', velocity.tx, velocity.ty);
+  i1('uVelocity', velocity.read.attach(0));
+  blit(divergenceF);
+
+  use(P.scale);
+  i1('uTex', pressure.read.attach(0)); f1('value', 0.8);
+  blit(pressure.write); pressure.swap();
+
+  use(P.pressure);
+  f2('texelSize', velocity.tx, velocity.ty);
+  i1('uDivergence', divergenceF.attach(0));
+  for (let i = 0; i < q.iters; i++) {
+    i1('uPressure', pressure.read.attach(1));
+    blit(pressure.write); pressure.swap();
+  }
+
+  use(P.gradient);
+  f2('texelSize', velocity.tx, velocity.ty);
+  i1('uPressure', pressure.read.attach(0)); i1('uVelocity', velocity.read.attach(1));
+  blit(velocity.write); velocity.swap();
+
+  use(P.advect);
+  i1('uVelocity', velocity.read.attach(0)); i1('uSource', velocity.read.attach(0));
+  f2('velTexel', velocity.tx, velocity.ty); f1('dt', dt); f4('dissipation', 0.25, 0.25, 0, 0);
+  blit(velocity.write); velocity.swap();
+
+  use(P.stabilize);
+  i1('uVelocity',velocity.read.attach(0)); i1('uScalars',scalars.read.attach(1));
+  f1('simSize',simMin); f1('liftLock',prm.liftLock);
+  blit(velocity.write);velocity.swap();
+
+  const cooling = 3.2 - prm.height * 2.5;
+  const diss = [cooling, 0.6, 0.9, 0];
+  if (q.mac) {
+    use(P.advect);
+    i1('uVelocity', velocity.read.attach(0)); i1('uSource', scalars.read.attach(1));
+    f2('velTexel', velocity.tx, velocity.ty); f1('dt', dt); f4('dissipation', 0, 0, 0, 0);
+    blit(hatA);
+    i1('uSource', hatA.attach(1)); f1('dt', -dt);
+    blit(hatB);
+    use(P.maccormack);
+    i1('uVelocity', velocity.read.attach(0)); i1('uSource', scalars.read.attach(1));
+    i1('uHat', hatA.attach(2)); i1('uHat2', hatB.attach(3));
+    f2('velTexel', velocity.tx, velocity.ty); f2('srcTexel', scalars.tx, scalars.ty);
+    f1('dt', dt); f4('dissipation', diss[0], diss[1], diss[2], diss[3]);
+    blit(scalars.write); scalars.swap();
+  } else {
+    use(P.advect);
+    i1('uVelocity', velocity.read.attach(0)); i1('uSource', scalars.read.attach(1));
+    f2('velTexel', velocity.tx, velocity.ty); f1('dt', dt); f4('dissipation', diss[0], diss[1], diss[2], diss[3]);
+    blit(scalars.write); scalars.swap();
+  }
+
+  // Transport hand-painted pigment through the identical fluid velocity.
+  // Independent fade keeps older colored strokes from staining fresh fires.
+  use(P.advect);
+  i1('uVelocity',velocity.read.attach(0));i1('uSource',pigment.read.attach(1));
+  f2('velTexel',velocity.tx,velocity.ty);f1('dt',dt);
+  f4('dissipation',0.035,0.035,0.035,0.95);
+  blit(pigment.write);pigment.swap();
+
+  // Clip field below the visible fuel bed, keeping flame rooted at its source.
+  use(P.constrainScalars);
+  i1('uScalars',scalars.read.attach(0));
+  f1('sourceFloor',em ? em[1]-em[3]*1.5 : -1.0);
+  blit(scalars.write);scalars.swap();
+
+  use(P.partUpdate);
+  i1('uState', parts.read.attach(0)); i1('uVelocity', velocity.read.attach(1)); i1('uScalars', scalars.read.attach(2));
+  i1('uCurl', curlF.attach(3));
+  f2('velTexel', velocity.tx, velocity.ty); f1('dt', dt);
+  f1('spawnRate',prm.sparks*prm.emberGain*1.75*(64*64)/(parts.w*parts.h));
+  f1('time',time); f1('lifetime',prm.emberLife);
+  f1('turbulence',Math.min(4.0,prm.emberTurb*prm.turb/1.4));
+  f2('rnd', Math.random(), Math.random());
+  blit(parts.write); parts.swap();
+}
+
+function render(){
+  const a = canvas.width / canvas.height, s = Math.min(1, a);
+  const em = emitVec() || [0.5, 0.1, 0.1, 0.05];
+  gl.disable(gl.BLEND);
+
+  use(P.composite);
+  i1('uScalars', scalars.read.attach(0));
+  f1('time', time); f1('aspect', a); f1('haze', prm.haze); f1('smokeDens', 1.1);
+  f1('propType', PRESETS[presetName].emitter ? PRESETS[presetName].prop : 0);
+  f1('sMin', s); f4('uEmit', em[0], em[1], em[2], em[3]);
+  f2('scalarTexel', scalars.tx, scalars.ty);f1('exposure',prm.exposure);
+  i1('uPigment',pigment.read.attach(1));
+  f1('chemMix',prm.chemistry);
+  blit(scene);
+
+  if (prm.sparks > 0 && prm.emberGain > 0) {
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    use(P.partDraw);
+    i1('uState', parts.read.attach(0));
+    i1('uPigment',pigment.read.attach(1));
+    i1('N', parts.w);
+    f1('pointScale', 2.4 * canvas.width / Math.max(1, canvas.clientWidth));
+    f1('time', time);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, scene.fbo);
+    gl.viewport(0, 0, scene.w, scene.h);
+    gl.bindVertexArray(emptyVAO);
+    gl.drawArrays(gl.POINTS, 0, parts.w * parts.h);
+    gl.disable(gl.BLEND);
+  }
+
+  use(P.prefilter);
+  i1('uSrc', scene.attach(0)); f2('srcTexel', scene.tx, scene.ty);
+  f1('threshold', 0.55); f1('knee', 0.45);
+  blit(bloomChain[0]);
+  use(P.blur);
+  for (let i = 1; i < bloomChain.length; i++) {
+    const src = bloomChain[i - 1];
+    i1('uSrc', src.attach(0)); f2('srcTexel', src.tx, src.ty);
+    blit(bloomChain[i]);
+  }
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  for (let i = bloomChain.length - 1; i > 0; i--) {
+    const src = bloomChain[i];
+    i1('uSrc', src.attach(0)); f2('srcTexel', src.tx * 0.5, src.ty * 0.5);
+    blit(bloomChain[i - 1]);
+  }
+  gl.disable(gl.BLEND);
+
+  use(P.final);
+  i1('uScene', scene.attach(0)); i1('uBloom', bloomChain[0].attach(1));
+  f1('bloom', prm.bloom * 0.55); f1('time', time);
+  blit(null);
+}
+
+function clearSim(){
+  [velocity, scalars, pigment, pressure, parts].forEach(d => {
+    [d.read, d.write].forEach(t => { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.viewport(0, 0, t.w, t.h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); });
+  });
+}
+
+/* ------------------------------------------------------------------ UI */
+const paletteEl=document.getElementById('palette');
+function chooseColor(key){
+  brushColor=key;
+  paletteEl.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.color===key)));
+  if(key==='rainbow')document.getElementById('sceneMode').textContent='🌈 무지개 화염 · 손가락 이동으로 색이 변합니다';
+  else document.getElementById('sceneMode').textContent='🔥 터치 파이어 플레이그라운드 · 큰 불꽃일수록 EMBER 증가';
+}
+for(const [key,c] of Object.entries(PALETTE)){
+  if(key==='custom')continue;
+  const b=document.createElement('button');b.type='button';b.dataset.color=key;
+  b.setAttribute('aria-label',c.name);b.title=c.name;
+  const dot=document.createElement('span');dot.className='dot';dot.style.background=c.css;
+  b.appendChild(dot);
+  b.addEventListener('click',()=>chooseColor(key));paletteEl.appendChild(b);
+}
+const customInput=document.getElementById('customColor');
+customInput.addEventListener('input',()=>{
+  const h=customInput.value;PALETTE.custom.rgb=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
+  chooseColor('custom');
+});
+function chooseTool(tool){
+  brushMode=tool;
+  document.querySelectorAll('#brushModes button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===tool)));
+}
+document.querySelectorAll('#brushModes button').forEach(b=>b.addEventListener('click',()=>chooseTool(b.dataset.tool)));
+chooseColor('natural');
+const sliderBox = document.getElementById('sliders');
+const sliderEls = {};
+for (const d of SLIDERS) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 's-' + d.k;
+  row.innerHTML = `<label for="${id}"><span>${d.label}</span><output></output></label><input type="range" id="${id}" min="${d.min}" max="${d.max}" step="${d.step}">`;
+  const input = row.querySelector('input'), out = row.querySelector('output');
+  input.addEventListener('input', () => { prm[d.k] = parseFloat(input.value); paintSlider(d); });
+  sliderEls[d.k] = { input, out };
+  sliderBox.appendChild(row);
+}
+function paintSlider(d){
+  const { input, out } = sliderEls[d.k];
+  input.value = prm[d.k];
+  input.style.setProperty('--fill', ((prm[d.k] - d.min) / (d.max - d.min) * 100) + '%');
+  out.textContent = d.fmt(prm[d.k]);
+}
+function paintAll(){ SLIDERS.forEach(paintSlider); }
+
+document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => {
+  presetName = b.dataset.p;
+  Object.assign(prm, PRESETS[presetName]);
+  document.querySelectorAll('#presets button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  paintAll();
+  clearSim();
+  if (presetName === 'touch') { hint.textContent = '손가락으로 원하는 곳에 불꽃을 그리세요'; hintGone = false; hint.classList.remove('gone'); setTimeout(hideHint, 3500); }
+}));
+
+document.getElementById('boom').addEventListener('click',()=>{
+  blastQueue.push({x:lastTouch[0],y:lastTouch[1],color:brushColor==='rainbow'?hsvRGB(time*.1):PALETTE[brushColor].rgb,isNatural:brushColor==='natural'});
+});
+document.getElementById('clearQuick').addEventListener('click',()=>{blastQueue.length=0;clearSim();});
+
+const tuneBtn = document.getElementById('tune'), drawer = document.getElementById('drawer');
+const zenBtn=document.getElementById('zen');
+zenBtn.addEventListener('click',()=>{
+ const dock=document.getElementById('dock');
+ dock.hidden=!dock.hidden;
+ zenBtn.textContent=dock.hidden?'조작 열기':'몰입 모드';
+});
+tuneBtn.addEventListener('click', () => {
+  const open = drawer.hidden;
+  drawer.hidden = !open;
+  tuneBtn.setAttribute('aria-expanded', String(open));
+});
+
+function paintQuality(){
+  document.querySelectorAll('#quality button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.q === quality)));
+}
+document.querySelectorAll('#quality button').forEach(b => b.addEventListener('click', () => {
+  if (quality === b.dataset.q) return;
+  quality = b.dataset.q; paintQuality();
+  velocity && (canvas.width = 0); resize();
+}));
+
+let captureNext=false;
+document.getElementById('capture').addEventListener('click',()=>{captureNext=true;});
+let paused = false;
+const pauseBtn = document.getElementById('pause');
+pauseBtn.addEventListener('click', () => { paused = !paused; pauseBtn.textContent = paused ? '재생' : '일시정지'; });
+document.getElementById('clear').addEventListener('click', clearSim);
+
+paintAll(); paintQuality();
+
+/* ------------------------------------------------------------------ loop */
+const fpsEl = document.getElementById('fps');
+let last = performance.now(), frames = 0, fpsT = 0, accumulator = 0;
+const FIXED_DT = 1 / 60;
+function frame(now){
+  const elapsed = Math.max(0,Math.min((now - last) / 1000,0.05)); last = now;
+  frames++; fpsT += elapsed;
+  if (fpsT > 0.65) { fpsEl.textContent = Math.round(frames / fpsT) + ' fps'; frames = 0; fpsT = 0; }
+  try {
+  resize();
+  if (!paused) {
+    accumulator = Math.min(accumulator + elapsed, FIXED_DT * 2.5);
+    let ticks=0;
+    while (accumulator >= FIXED_DT && ticks < 2) {
+      time += FIXED_DT; step(FIXED_DT);
+      accumulator -= FIXED_DT; ticks++;
+    }
+    if (ticks === 2 && accumulator >= FIXED_DT) accumulator = 0;
+  } else accumulator=0;
+  render();
+  } catch(err) { console.error('Fire engine error',err); fatal('GPU 처리 중 오류가 발생했습니다: '+String(err.message).slice(0,160)); return; }
+  if(captureNext){
+    captureNext=false;
+    // Called before the drawing buffer is discarded by WebGL compositor.
+    try{
+      const link=document.createElement('a');
+      link.download='maxVFX_FlameDynamics_'+presetName+'.png';
+      link.href=canvas.toDataURL('image/png');link.click();
+    }catch(e){console.warn('PNG capture unavailable',e);}
+  }
+  requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange',()=>{last=performance.now();accumulator=0;});
+try{resize();requestAnimationFrame(frame);}
+catch(err){console.error(err);fatal('GPU 초기화 오류: '+String(err.message).slice(0,160));}
+})();
+</script>
+</body>
+</html>
